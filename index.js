@@ -54,6 +54,9 @@ async function getDirection(liveGame) {
     console.log(`[Logic]: Please review code and add your trading logic on line:49, remember to remove the exit call`)
     console.log(`[Logic]: Program will now exit`)
     process.exit()
+
+    let last10Games = await getLastGames(10)
+    //use last 10 games to help predict next game 
     let direction = "up"
     return direction
 }
@@ -138,4 +141,71 @@ async function getBlockchainRound(epoch) {
     blockRound.lockTime = new Date(blockRound.lockTimestamp)
     blockRound.startTime = new Date(blockRound.startTimestamp)
     return blockRound
+}
+
+async function getLastGames(numGames = 10, retries = 2) {
+    var data = JSON.stringify({
+        query: `query getMarketData{  rounds(orderBy: epoch, orderDirection: desc,first:10) {
+                    id
+                    epoch
+                    position
+                    failed
+                    previous
+                    startAt
+                    startBlock
+                    startHash
+                    lockAt
+                    lockBlock
+                    lockHash
+                    lockPrice
+                    lockRoundId
+                    closeAt
+                    closeBlock
+                    closeHash
+                    closePrice
+                    closeRoundId
+                    totalBets
+                    totalAmount
+                    bullBets
+                    bullAmount
+                    bearBets
+                    bearAmount
+                    bets
+                }}`,
+        variables: {}
+    });
+
+    var config = {
+        method: 'post',
+        url: "https://api.thegraph.com/subgraphs/name/pancakeswap/prediction-v2",
+        headers: {
+            'accept-language': 'en-US,en;q=0.9',
+            'content-type': 'application/json',
+            'accept': '*/*',
+            'cache-control': 'no-cache',
+        },
+        data: data
+    };
+    try {
+        var res = await axios(config)
+    } catch (ex) {
+        console.log("[Subgraph]: Error", ex)
+        retries++
+        if (retries < 5) {
+            await sleep(300)
+            return await getLastGames(numGames, retries)
+        } else {
+            throw ex
+        }
+    }
+
+    let results = res.data.data.rounds
+    //append JS compatible time prototypes
+    results.forEach(r => {
+        r.startAtH = new Date(Number(r.startAt) * 1000)
+        r.closeAtH = new Date(Number(r.closeAt) * 1000)
+        r.lockAtH = new Date(Number(r.lockAt) * 1000)
+    });
+
+    return results
 }
